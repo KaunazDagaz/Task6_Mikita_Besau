@@ -1,10 +1,20 @@
+using Microsoft.EntityFrameworkCore;
 using task6.Components;
+using task6.Models;
+using task6.Services;
+using task6.Services.IServices;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
+
+builder.Services.AddDbContext<ApplicationDbContext>(options =>
+    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+builder.Services.AddScoped<IPresentationService, PresentationService>();
+builder.Services.AddSingleton<IActiveUserService, ActiveUserService>();
 
 var app = builder.Build();
 
