@@ -6,12 +6,12 @@ namespace task6.Services
 {
     public class ActiveUserService : IActiveUserService
     {
-        private readonly ConcurrentDictionary<string, User> users = new ConcurrentDictionary<string, User>();
+        private readonly ConcurrentDictionary<string, ActiveUser> users = new ConcurrentDictionary<string, ActiveUser>();
 
-        public User AddUser(string connectionId, string nickname, Guid presentationId, string creatorNickname)
+        public ActiveUser AddUser(string connectionId, string nickname, Guid presentationId, string creatorNickname)
         {
             var role = nickname == creatorNickname ? "Creator" : "Viewer";
-            var user = new User
+            var user = new ActiveUser
             {
                 ConnectionId = connectionId,
                 Nickname = nickname,
@@ -24,14 +24,14 @@ namespace task6.Services
             return user;
         }
 
-        public User GetUser(string connectionId)
+        public ActiveUser GetUser(string connectionId)
         {
             bool isGot = users.TryGetValue(connectionId, out var user);
             if (!isGot || user == null) throw new Exception("User not found");
             return user;
         }
 
-        public List<User> GetUsersInPresentation(Guid presentationId)
+        public List<ActiveUser> GetUsersInPresentation(Guid presentationId)
         {
             return users.Values
                 .Where(u => u.PresentationId == presentationId)
