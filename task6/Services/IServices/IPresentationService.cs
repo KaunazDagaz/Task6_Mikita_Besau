@@ -8,8 +8,5 @@ namespace task6.Services.IServices
         Task<Presentation> GetPresentationByIdAsync(Guid id);
         Task<Presentation> CreatePresentationAsync(string title, string creatorNickname);
         Task<bool> DeletePresentationAsync(Guid id);
-        Task<Slide> AddSlideAsync (Guid presentationId, int order);
-        Task<bool> UpdateSlideContentAsync(Guid slideId, string content);
-        Task<bool> DeleteSlideAsync(Guid slideId);
     }
 }

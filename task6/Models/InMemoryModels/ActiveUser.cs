@@ -1,6 +1,6 @@
 ﻿namespace task6.Models.InMemoryModels
 {
-    public class User
+    public class ActiveUser
     {
         public required string ConnectionId { get; set; }
         public required string Nickname { get; set; }
