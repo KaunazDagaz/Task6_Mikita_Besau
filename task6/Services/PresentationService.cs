@@ -1,4 +1,5 @@
 ﻿using Microsoft.EntityFrameworkCore;
+using task6.Exceptions;
 using task6.Models;
 using task6.Services.IServices;
 
@@ -26,7 +27,7 @@ namespace task6.Services
                 .Include(p => p.Slides
                 .OrderBy(s => s.Order))
                 .FirstOrDefaultAsync(p => p.Id == id);
-            if (presentation == null) throw new ArgumentNullException($"Can't find presentation with guid {id}");
+            if (presentation == null) throw new PresentationNotFoundException($"Can't find presentation with guid {id}");
             return presentation;
         }
 
@@ -56,7 +57,7 @@ namespace task6.Services
         public async Task<bool> DeletePresentationAsync(Guid id)
         {
             var presentation = context.Presentations.FirstOrDefault(p => p.Id == id);
-            if (presentation == null) throw new ArgumentNullException($"Can't find presentation with guid {id}");
+            if (presentation == null) throw new PresentationNotFoundException($"Can't find presentation with guid {id}");
             context.Presentations.Remove(presentation);
             await context.SaveChangesAsync();
             return true;

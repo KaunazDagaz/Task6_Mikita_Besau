@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using task6.Components;
+using task6.Exceptions;
 using task6.Hubs;
 using task6.Models;
 using task6.Services;
@@ -21,6 +22,8 @@ builder.Services.AddSingleton<IActiveUserService, ActiveUserService>();
 builder.Services.AddSignalR();
 
 var app = builder.Build();
+
+app.UseMiddleware<ExceptionMiddleware>();
 
 // Configure the HTTP request pipeline.
 if (!app.Environment.IsDevelopment())
