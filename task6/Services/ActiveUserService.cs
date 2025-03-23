@@ -1,4 +1,5 @@
 ﻿using System.Collections.Concurrent;
+using task6.Exceptions;
 using task6.Models.InMemoryModels;
 using task6.Services.IServices;
 
@@ -20,14 +21,14 @@ namespace task6.Services
                 JoinedAt = DateTime.Now
             };
             bool isAdded = users.TryAdd(connectionId, user);
-            if (!isAdded) throw new Exception("User already exists");
+            if (!isAdded) throw new UserAlreadyExistsException("User already exists");
             return user;
         }
 
         public ActiveUser GetUser(string connectionId)
         {
             bool isGot = users.TryGetValue(connectionId, out var user);
-            if (!isGot || user == null) throw new Exception("User not found");
+            if (!isGot || user == null) throw new UserNotFoundException("User not found");
             return user;
         }
 
@@ -41,14 +42,14 @@ namespace task6.Services
         public bool RemoveUser(string connectionId)
         {
             bool isRemoved = users.TryRemove(connectionId, out _);
-            if (!isRemoved) throw new Exception("User not found");
+            if (!isRemoved) throw new UserNotFoundException("User not found");
             return true;
         }
 
         public bool UpdateUserRole(string connectionId, string newRole)
         {
             bool isGot = users.TryGetValue(connectionId, out var user);
-            if (!isGot || user == null) throw new Exception("User not found");
+            if (!isGot || user == null) throw new UserNotFoundException("User not found");
             user.Role = newRole;
             return true;
         }
@@ -56,14 +57,14 @@ namespace task6.Services
         public bool IsUserCreator(string connectionId, Guid presentationId)
         {
             bool isGot = users.TryGetValue(connectionId, out var user);
-            if (!isGot || user == null) throw new Exception("User not found");
+            if (!isGot || user == null) throw new UserNotFoundException("User not found");
             return user.Role == "Creator" && user.PresentationId == presentationId;
         }
 
         public bool IsUserEditor(string connectionId, Guid presentationId)
         {
             bool isGot = users.TryGetValue(connectionId, out var user);
-            if (!isGot || user == null) throw new Exception("User not found");
+            if (!isGot || user == null) throw new UserNotFoundException("User not found");
             return user.PresentationId == presentationId &&
                 (user.Role == "Creator" || user.Role == "Editor");
         }

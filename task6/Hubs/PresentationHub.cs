@@ -1,4 +1,5 @@
 ﻿using Microsoft.AspNetCore.SignalR;
+using task6.Exceptions;
 using task6.Hubs.IHubs;
 using task6.Services.IServices;
 
@@ -45,7 +46,7 @@ namespace task6.Hubs
             var callerUser = activeUserService.GetUser(Context.ConnectionId);
             var targetUser = activeUserService.GetUser(connectionId);
             if (callerUser.Role != "Creator" || callerUser.PresentationId != targetUser.PresentationId) 
-                throw new Exception("Only creator can change user role");
+                throw new HubAccessForbidden("Only creator can change user role");
             activeUserService.UpdateUserRole(connectionId, newRole);
             await Clients.Group(callerUser.PresentationId.ToString())
                 .SendAsync("UserRoleChanged", connectionId, newRole);
@@ -57,7 +58,7 @@ namespace task6.Hubs
             var slide = presentationService.GetPresentationByIdAsync(user.PresentationId)
                 .Result.Slides.FirstOrDefault(s => s.Id == slideId);
             if (user.Role != "Creator" || user.Role != "Editor")
-                throw new Exception("Only creator or editor can update slide content");
+                throw new HubAccessForbidden("Only creator or editor can update slide content");
             await slideService.UpdateSlideContentAsync(slideId, content);
             await Clients.Group(user.PresentationId.ToString())
                 .SendAsync("SlideContentUpdated", slideId, content);
@@ -67,7 +68,7 @@ namespace task6.Hubs
         {
             var user = activeUserService.GetUser(Context.ConnectionId);
             if (user.Role != "Creator")
-                throw new Exception("Only creator can add new slide");
+                throw new HubAccessForbidden("Only creator can add new slide");
             var presentation = await presentationService.GetPresentationByIdAsync(presentationId);
             int newOrder = presentation.Slides.Count;
             var newSlide = await slideService.AddSlideAsync(presentationId, newOrder);
@@ -79,7 +80,7 @@ namespace task6.Hubs
         {
             var user = activeUserService.GetUser(Context.ConnectionId);
             if (user.Role != "Creator")
-                throw new Exception("Only creator can delete slide");
+                throw new HubAccessForbidden("Only creator can delete slide");
             await slideService.DeleteSlideAsync(slideId);
             await Clients.Group(user.PresentationId.ToString())
                 .SendAsync("SlideDeleted", slideId);

@@ -1,4 +1,5 @@
-﻿using task6.Models;
+﻿using task6.Exceptions;
+using task6.Models;
 using task6.Services.IServices;
 
 namespace task6.Services
@@ -30,7 +31,7 @@ namespace task6.Services
         public async Task<bool> UpdateSlideContentAsync(Guid slideId, string content)
         {
             var slide = context.Slides.FirstOrDefault(s => s.Id == slideId);
-            if (slide == null) throw new ArgumentNullException($"Can't find slide with guid {slideId}");
+            if (slide == null) throw new SlideNotFoundException($"Can't find slide with guid {slideId}");
             slide.Content = content;
             await context.SaveChangesAsync();
             return true;
@@ -39,7 +40,7 @@ namespace task6.Services
         public async Task<bool> DeleteSlideAsync(Guid slideId)
         {
             var slide = context.Slides.FirstOrDefault(s => s.Id == slideId);
-            if (slide == null) throw new ArgumentNullException($"Can't find slide with guid {slideId}");
+            if (slide == null) throw new SlideNotFoundException($"Can't find slide with guid {slideId}");
             context.Slides.Remove(slide);
             await context.SaveChangesAsync();
             return true;
