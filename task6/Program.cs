@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using task6.Components;
+using task6.Hubs;
 using task6.Models;
 using task6.Services;
 using task6.Services.IServices;
@@ -16,6 +17,8 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 builder.Services.AddScoped<IPresentationService, PresentationService>();
 builder.Services.AddScoped<ISlideService, SlideService>();
 builder.Services.AddSingleton<IActiveUserService, ActiveUserService>();
+
+builder.Services.AddSignalR();
 
 var app = builder.Build();
 
@@ -34,5 +37,7 @@ app.UseAntiforgery();
 
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
+
+app.MapHub<PresentationHub>("/presentationHub");
 
 app.Run();
