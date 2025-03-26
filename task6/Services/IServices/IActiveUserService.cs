@@ -4,7 +4,7 @@ namespace task6.Services.IServices
 {
     public interface IActiveUserService
     {
-        ActiveUser AddUser(string connectionId, string nickname, Guid presentationId, string creatorNickname);
+        ActiveUser AddUser(string connectionId, string nickname, Guid userId, Guid presentationId, string role);
         ActiveUser GetUser(string connectionId);
         List<ActiveUser> GetUsersInPresentation(Guid presentationId);
         bool RemoveUser(string connectionId);

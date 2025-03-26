@@ -18,19 +18,22 @@ namespace task6.Hubs
             this.activeUserService = activeUserService;
         }
 
-        public async Task JoinPresentation(Guid presentationId, string nickname)
+        public async Task JoinPresentation(Guid presentationId, string nickname, Guid userId)
         {
             var presentation = await presentationService.GetPresentationByIdAsync(presentationId);
-            await Groups.AddToGroupAsync(Context.ConnectionId, presentationId.ToString());
+            var isCreator = presentation.CreatorId == userId;
+            var role = isCreator ? "Creator" : "Viewer";
             var user = activeUserService.AddUser(
                 Context.ConnectionId,
                 nickname,
+                userId,
                 presentationId,
-                presentation.CreatorNickname
+                role
             );
+            await Groups.AddToGroupAsync(Context.ConnectionId, presentationId.ToString());
             await Clients.Group(presentationId.ToString()).SendAsync("UserJoined", user);
             var users = activeUserService.GetUsersInPresentation(presentationId);
-            await Clients.Caller.SendAsync("UsersInPresentation", users);
+            await Clients.Caller.SendAsync("ActiveUsers", users);
         }
 
         public async Task LeavePresentation(Guid presentationId)
@@ -47,7 +50,7 @@ namespace task6.Hubs
             var targetUser = activeUserService.GetUser(connectionId);
             if (callerUser.Role != "Creator" || callerUser.PresentationId != targetUser.PresentationId) 
                 throw new HubAccessForbidden("Only creator can change user role");
-            activeUserService.UpdateUserRole(connectionId, newRole);
+            activeUserService.UpdateUserRole(targetUser.ConnectionId, newRole);
             await Clients.Group(callerUser.PresentationId.ToString())
                 .SendAsync("UserRoleChanged", connectionId, newRole);
         }
@@ -57,7 +60,7 @@ namespace task6.Hubs
             var user = activeUserService.GetUser(Context.ConnectionId);
             var slide = presentationService.GetPresentationByIdAsync(user.PresentationId)
                 .Result.Slides.FirstOrDefault(s => s.Id == slideId);
-            if (user.Role != "Creator" || user.Role != "Editor")
+            if (user.Role != "Creator" && user.Role != "Editor")
                 throw new HubAccessForbidden("Only creator or editor can update slide content");
             await slideService.UpdateSlideContentAsync(slideId, content);
             await Clients.Group(user.PresentationId.ToString())
@@ -88,10 +91,18 @@ namespace task6.Hubs
 
         public override async Task OnDisconnectedAsync(Exception? exception)
         {
-            var user = activeUserService.GetUser(Context.ConnectionId);
-            activeUserService.RemoveUser(Context.ConnectionId);
-            await Clients.Group(user.PresentationId.ToString())
-                .SendAsync("UserLeft", user.ConnectionId);
+            try
+            {
+                var user = activeUserService.GetUser(Context.ConnectionId);
+                await Groups.RemoveFromGroupAsync(Context.ConnectionId, user.PresentationId.ToString());
+                activeUserService.RemoveUser(Context.ConnectionId);
+                await Clients.Group(user.PresentationId.ToString())
+                    .SendAsync("UserLeft", user.ConnectionId);
+            }
+            catch (UserNotFoundException)
+            {
+
+            }
             await base.OnDisconnectedAsync(exception);
         }
     }

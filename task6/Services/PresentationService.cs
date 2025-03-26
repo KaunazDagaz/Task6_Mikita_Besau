@@ -31,23 +31,16 @@ namespace task6.Services
             return presentation;
         }
 
-        public async Task<Presentation> CreatePresentationAsync(string title, string creatorNickname)
+        public async Task<Presentation> CreatePresentationAsync(string title, string creatorNickname, Guid creatorId)
         {
             var presentation = new Presentation
             {
                 Id = Guid.NewGuid(),
                 Title = title,
                 CreatorNickname = creatorNickname,
-                CreatedAt = DateTime.Now,
-                Slides = new List<Slide>
-                {
-                    new Slide
-                    {
-                        Id = Guid.NewGuid(),
-                        Order = 1,
-                        Content = "{\"objects\":[]}"
-                    }
-                }
+                CreatorId = creatorId,
+                CreatedAt = DateTime.UtcNow,
+                Slides = new List<Slide>()
             };
             context.Presentations.Add(presentation);
             await context.SaveChangesAsync();

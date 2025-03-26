@@ -1,0 +1,103 @@
+﻿@inject IJSRuntime JSRuntime
+
+<div class="editing-toolbar bg-gradient-to-r from-gray-50 to-gray-100 shadow-md rounded-lg mb-4 p-3 @(IsVisible ? "d-flex" : "d-none") justify-content-between align-items-center flex-wrap">
+    <div class="toolbar-group d-flex align-items-center me-3 mb-2 mb-sm-0">
+        <div class="btn-group me-2">
+            <button class="btn btn-sm btn-light hover:bg-blue-50 text-blue-600 border-blue-200 transition-colors duration-200"
+            title="Add Text"
+            @onclick="AddTextBlock">
+                <i class="fas fa-font"></i>
+            </button>
+            <button class="btn btn-sm btn-light hover:bg-blue-50 text-blue-600 border-blue-200 transition-colors duration-200"
+            title="Add Rectangle"
+            @onclick="AddRectangle">
+                <i class="fas fa-square"></i>
+            </button>
+            <button class="btn btn-sm btn-light hover:bg-blue-50 text-blue-600 border-blue-200 transition-colors duration-200"
+            title="Add Circle"
+            @onclick="AddCircle">
+                <i class="fas fa-circle"></i>
+            </button>
+            <button class="btn btn-sm btn-light hover:bg-blue-50 text-blue-600 border-blue-200 transition-colors duration-200"
+            title="Enable Drawing Mode"
+            @onclick="EnableDrawingMode">
+                <i class="fas fa-pencil-alt"></i>
+            </button>
+            <button class="btn btn-sm btn-light hover:bg-blue-50 text-blue-600 border-blue-200 transition-colors duration-200"
+            title="Disable Drawing Mode"
+            @onclick="DisableDrawingMode">
+                <i class="fas fa-ban"></i>
+            </button>
+        </div>
+    </div>
+
+    <div class="toolbar-group d-flex align-items-center me-3 mb-2 mb-sm-0">
+        <button class="btn btn-sm bg-red-50 hover:bg-red-100 text-red-600 border-red-200 transition-colors duration-200"
+        title="Delete Selected"
+        @onclick="DeleteSelected">
+            <i class="fas fa-trash-alt"></i>
+        </button>
+    </div>
+
+    <div class="toolbar-group d-flex align-items-center mb-2 mb-sm-0">
+        <div class="input-group input-group-sm">
+            <label class="input-group-text bg-white text-gray-700 border-gray-300" for="object-color">Color</label>
+            <div class="color-preview border rounded overflow-hidden" style="width: 38px; height: 31px;">
+                <input type="color" id="object-color" class="form-control form-control-color border-0 p-0"
+                style="width: 200%; height: 200%; transform: translate(-25%, -25%);"
+                @onchange="ChangeObjectColor" />
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public bool IsVisible { get; set; }
+
+    [Parameter]
+    public bool IsEditable { get; set; }
+
+    private async Task AddTextBlock()
+    {
+        if (!IsEditable) return;
+        await JSRuntime.InvokeVoidAsync("fabricInterop.addTextBlock");
+    }
+
+    private async Task AddRectangle()
+    {
+        if (!IsEditable) return;
+        await JSRuntime.InvokeVoidAsync("fabricInterop.addRectangle");
+    }
+
+    private async Task AddCircle()
+    {
+        if (!IsEditable) return;
+        await JSRuntime.InvokeVoidAsync("fabricInterop.addCircle");
+    }
+
+    private async Task DeleteSelected()
+    {
+        if (!IsEditable) return;
+        await JSRuntime.InvokeVoidAsync("fabricInterop.deleteSelected");
+    }
+
+    private async Task ChangeObjectColor(ChangeEventArgs e)
+    {
+        if (!IsEditable) return;
+        string color = e.Value.ToString();
+        await JSRuntime.InvokeVoidAsync("fabricInterop.changeObjectColor", color);
+    }
+
+    private async Task EnableDrawingMode()
+    {
+        if (!IsEditable) return;
+        await JSRuntime.InvokeVoidAsync("fabricInterop.enableDrawingMode");
+    }
+
+    private async Task DisableDrawingMode()
+    {
+        if (!IsEditable) return;
+        await JSRuntime.InvokeVoidAsync("fabricInterop.disableDrawingMode");
+    }
+}

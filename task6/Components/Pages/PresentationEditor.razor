@@ -1,0 +1,422 @@
+﻿@page "/presentation/{PresentationId:guid}"
+@using Microsoft.AspNetCore.SignalR.Client
+@using task6.Models
+@using task6.Models.InMemoryModels
+@using task6.Services.IServices
+@inject IJSRuntime JSRuntime
+@inject NavigationManager NavigationManager
+@inject ISlideService SlideService
+@inject ISessionStorageService SessionStorage
+@inject IPresentationService PresentationService
+@inject IActiveUserService ActiveUserService
+
+@implements IAsyncDisposable
+
+<div class="container-fluid min-vh-100 bg-light px-4 py-4">
+    @if (!IsConnected)
+    {
+        <div class="position-absolute top-50 start-50 translate-middle text-center">
+            <div class="spinner-border text-primary" style="width: 3rem; height: 3rem;">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <h5 class="mt-4 text-muted fw-normal">Connecting to presentation...</h5>
+        </div>
+    }
+    else
+    {
+        <div class="row mb-3">
+            <div class="col-12 d-flex justify-content-end">
+                <button class="btn btn-outline-danger" @onclick="ExitPresentation">
+                    <i class="bi bi-box-arrow-right me-2"></i>Exit Presentation
+                </button>
+            </div>
+        </div>
+        <div class="row h-100 g-4">
+            <div class="col-md-3">
+                <div class="card border-0 shadow rounded-3 mb-4">
+                    <div class="card-header bg-light border-0">
+                        <div class="d-flex align-items-center">
+                            <i class="bi bi-collection-fill fs-4 me-2 text-primary"></i>
+                            <h5 class="card-title mb-0 fw-bold">Slides</h5>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="d-flex flex-column">
+                            <div class="overflow-auto mb-3">
+                                <div class="d-flex flex-column gap-3" role="group">
+                                    @foreach (var slide in Slides)
+                                    {
+                                        <div @onclick="() => LoadSlide(slide.Id)"
+                                             class="card p-0 @(slide.Id == CurrentSlide?.Id ? "border-primary" : "border")">
+                                            <div class="card-body p-2">
+                                                <div class="position-relative bg-light rounded ratio ratio-16x9 mb-2">
+                                                    <div class="position-absolute top-0 start-0 m-1">
+                                                        <span class="badge bg-primary bg-opacity-75">@slide.Order</span>
+                                                    </div>
+                                                </div>
+                                                <p class="mb-0 text-center small">Slide @slide.Order</p>
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                            @if (CurrentUser?.Role == "Creator")
+                            {
+                                <button class="btn btn-primary w-100" @onclick="AddNewSlide">
+                                    <i class="bi bi-plus-lg me-2"></i>
+                                    <span>Add Slide</span>
+                                </button>
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-6 d-flex flex-column">
+                @if (IsEditable)
+                {
+                    <PresentationsEditorToolbar IsVisible="IsEditable" IsEditable="IsEditable" />
+                }
+
+                <div class="card border-0 shadow flex-grow-1 rounded-3">
+                    <div class="card-header bg-white border-bottom">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0 fw-bold">
+                                <i class="bi bi-easel me-2"></i>Canvas
+                            </h5>
+                        </div>
+                    </div>
+                    <div class="card-body p-3 bg-light">
+                        <div id="canvas-wrapper" class="bg-white rounded-3 shadow-sm p-2" style="height: 500px;">
+                            <canvas id="fabricCanvas" class="w-100 h-100"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-3">
+                <div class="card border-0 shadow rounded-3">
+                    <div class="card-header bg-light bg-opacity-10 border-0">
+                        <div class="d-flex align-items-center">
+                            <i class="bi bi-people-fill fs-4 me-2 text-primary"></i>
+                            <h5 class="card-title mb-0 fw-bold">Collaborators</h5>
+                        </div>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="list-group list-group-flush">
+                            @foreach (var user in ActiveUsers)
+                            {
+                                <div class="list-group-item border-0">
+                                    <div class="d-flex align-items-center py-2">
+                                        <div class="bg-primary bg-opacity-10 p-2 rounded-circle">
+                                            <i class="bi bi-person-fill text-primary"></i>
+                                        </div>
+                                        <div class="ms-3 flex-grow-1">
+                                            <div class="fw-semibold">@user.Nickname</div>
+                                            @if (user.Role == "Creator")
+                                            {
+                                                <span class="badge bg-danger text-white">Creator</span>
+                                            }
+                                            else if (user.Role == "Editor")
+                                            {
+                                                <span class="badge bg-warning text-dark">Editor</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="badge bg-info text-white">Viewer</span>
+                                            }
+                                        </div>
+                                        @if (user.ConnectionId == _hubConnection.ConnectionId)
+                                        {
+                                            <span class="badge bg-success rounded-pill ms-1">You</span>
+                                        }
+                                        @if (CurrentUser?.Role == "Creator" && user.Role != "Creator" && user.ConnectionId != _hubConnection.ConnectionId)
+                                        {
+                                            <div class="dropdown ms-1">
+                                                <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                                    <i class="bi bi-gear-fill"></i>
+                                                </button>
+                                                <ul class="dropdown-menu dropdown-menu-end">
+                                                    @if (user.Role == "Viewer")
+                                                    {
+                                                        <li><button class="dropdown-item" @onclick='() => ChangeUserRole(user.ConnectionId, "Editor")'>Make Editor</button></li>
+                                                    }
+                                                    else if (user.Role == "Editor")
+                                                    {
+                                                        <li><button class="dropdown-item" @onclick='() => ChangeUserRole(user.ConnectionId, "Viewer")'>Make Viewer</button></li>
+                                                    }
+                                                </ul>
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public Guid PresentationId { get; set; }
+
+    private HubConnection _hubConnection;
+    private bool IsConnected { get; set; } = false;
+    private string Nickname { get; set; }
+    private List<ActiveUser> ActiveUsers { get; set; } = new();
+    private ActiveUser CurrentUser { get; set; }
+    private bool IsEditable => CurrentUser?.Role == "Creator" || CurrentUser?.Role == "Editor";
+    private List<Slide> Slides { get; set; } = new();
+    private Slide CurrentSlide { get; set; }
+    private bool _hasInitializedCanvas = false;
+    private bool _hasLeftPresentation = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        ResetState();
+        Nickname = await SessionStorage.GetNicknameAsync();
+        if (string.IsNullOrEmpty(Nickname))
+        {
+            NavigationManager.NavigateTo("/");
+            return;
+        }
+        await InitializeHubConnectionAsync();
+        await JoinPresentationAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_hasInitializedCanvas && IsConnected)
+        {
+            _hasInitializedCanvas = true;
+            await InitializeCanvasAsync();
+        }
+    }
+
+    private void ResetState()
+    {
+        _hasInitializedCanvas = false;
+        Slides = new List<Slide>();
+        CurrentSlide = null;
+        IsConnected = false;
+        _hasLeftPresentation = false;
+    }
+
+    private async Task InitializeHubConnectionAsync()
+    {
+        _hubConnection = new HubConnectionBuilder()
+            .WithUrl(NavigationManager.ToAbsoluteUri("/presentationHub"))
+            .Build();
+        RegisterHubHandlers();
+        await _hubConnection.StartAsync();
+    }
+
+    private void RegisterHubHandlers()
+    {
+        _hubConnection.On<ActiveUser>("UserJoined", HandleUserJoined);
+        _hubConnection.On<string>("UserLeft", HandleUserLeft);
+        _hubConnection.On<List<ActiveUser>>("ActiveUsers", HandleActiveUsers);
+        _hubConnection.On<string, string>("UserRoleChanged", HandleUserRoleChanged);
+        _hubConnection.On<Guid, string>("SlideContentUpdated", HandleSlideContentUpdated);
+        _hubConnection.On<Slide>("NewSlideAdded", HandleNewSlideAdded);
+        _hubConnection.On<Guid>("SlideDeleted", HandleSlideDeleted);
+    }
+
+    private void HandleUserJoined(ActiveUser user)
+    {
+        ActiveUsers.Add(user);
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void HandleUserLeft(string connectionId)
+    {
+        var user = ActiveUsers.FirstOrDefault(u => u.ConnectionId == connectionId);
+        if (user != null)
+        {
+            ActiveUsers.Remove(user);
+            InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void HandleActiveUsers(List<ActiveUser> users)
+    {
+        ActiveUsers = users;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private async Task HandleUserRoleChanged(string connectionId, string newRole)
+    {
+        var user = ActiveUsers.FirstOrDefault(u => u.ConnectionId == connectionId);
+        if (user != null)
+        {
+            user.Role = newRole;
+            if (connectionId == _hubConnection?.ConnectionId && _hasInitializedCanvas)
+            {
+                await UpdateCanvasEditability(newRole);
+            }
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task UpdateCanvasEditability(string role)
+    {
+        bool canEdit = role == "Creator" || role == "Editor";
+        if (canEdit)
+        {
+            await JSRuntime.InvokeVoidAsync("fabricInterop.setupEditableCanvas", true, DotNetObjectReference.Create(this));
+        }
+        else
+        {
+            await JSRuntime.InvokeVoidAsync("fabricInterop.setupViewOnlyCanvas");
+        }
+    }
+
+    private async Task HandleSlideContentUpdated(Guid slideId, string content)
+    {
+        var slide = Slides.FirstOrDefault(s => s.Id == slideId);
+        if (slide != null)
+        {
+            slide.Content = content;
+        }
+        if (_hasInitializedCanvas && CurrentSlide?.Id == slideId)
+        {
+            await JSRuntime.InvokeVoidAsync("fabricInterop.loadFromJSON", content);
+        }
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task HandleNewSlideAdded(Slide slide)
+    {
+        Slides.Add(slide);
+        Slides = Slides.OrderBy(s => s.Order).ToList();
+        CurrentSlide = slide;
+        if (_hasInitializedCanvas)
+        {
+            await LoadCurrentSlideAsync();
+        }
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task HandleSlideDeleted(Guid slideId)
+    {
+        var slideToRemove = Slides.FirstOrDefault(s => s.Id == slideId);
+        if (slideToRemove != null)
+        {
+            Slides.Remove(slideToRemove);
+            if (CurrentSlide?.Id == slideId)
+            {
+                CurrentSlide = Slides.FirstOrDefault();
+                await LoadCurrentSlideAsync();
+            }
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task JoinPresentationAsync()
+    {
+        var userId = await SessionStorage.GetUserIdAsync();
+        await _hubConnection.InvokeAsync("JoinPresentation", PresentationId, Nickname, userId);
+        var presentation = await GetPresentationAsync();
+        if (presentation != null)
+        {
+            Slides = presentation.Slides.OrderBy(s => s.Order).ToList();
+            if (!Slides.Any())
+            {
+                await _hubConnection.InvokeAsync("AddNewSlide", PresentationId);
+            }
+            ActiveUsers = ActiveUserService.GetUsersInPresentation(PresentationId);
+            CurrentUser = ActiveUsers.FirstOrDefault(u => u.Nickname == Nickname);
+            CurrentSlide = Slides.FirstOrDefault();
+        }
+        IsConnected = true;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task<Presentation> GetPresentationAsync()
+    {
+        return await PresentationService.GetPresentationByIdAsync(PresentationId);
+    }
+
+    private async Task InitializeCanvasAsync()
+    {
+        await JSRuntime.InvokeVoidAsync("fabricInterop.initCanvas", "fabricCanvas");
+        if (IsEditable)
+        {
+            await JSRuntime.InvokeVoidAsync("fabricInterop.setupEditableCanvas", true, DotNetObjectReference.Create(this));
+        }
+        else
+        {
+            await JSRuntime.InvokeVoidAsync("fabricInterop.setupViewOnlyCanvas");
+        }
+        await LoadCurrentSlideAsync();
+    }
+
+    private async Task LoadCurrentSlideAsync()
+    {
+        if (CurrentSlide != null && !string.IsNullOrEmpty(CurrentSlide.Content))
+        {
+            await JSRuntime.InvokeVoidAsync("fabricInterop.loadFromJSON", CurrentSlide.Content);
+        }
+        else
+        {
+            await JSRuntime.InvokeVoidAsync("fabricInterop.clearCanvas");
+        }
+    }
+
+    private async Task LoadSlide(Guid slideId)
+    {
+        CurrentSlide = Slides.FirstOrDefault(s => s.Id == slideId);
+        await LoadCurrentSlideAsync();
+    }
+
+    private async Task AddNewSlide()
+    {
+        await _hubConnection.InvokeAsync("AddNewSlide", PresentationId);
+    }
+
+    [JSInvokable("CanvasContentChanged")]
+    public async Task CanvasContentChangedAsync(string content)
+    {
+        if (CurrentSlide != null)
+        {
+            CurrentSlide.Content = content;
+            await _hubConnection.InvokeAsync("UpdateSlideContent", CurrentSlide.Id, content);
+            await SlideService.UpdateSlideContentAsync(CurrentSlide.Id, content);
+        }
+    }
+
+    private async Task ChangeUserRole(string connectionId, string newRole)
+    {
+        await _hubConnection.InvokeAsync("ChangeUserRole", connectionId, newRole);
+    }
+
+    private async Task ExitPresentation()
+    {
+        await TryLeavePresentation();
+        NavigationManager.NavigateTo("/");
+    }
+
+    private async Task TryLeavePresentation()
+    {
+        if (_hubConnection != null && IsConnected && !_hasLeftPresentation)
+        {
+            await _hubConnection.InvokeAsync("LeavePresentation", PresentationId);
+            _hasLeftPresentation = true;
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await TryLeavePresentation();
+        if (_hubConnection != null)
+        {
+            await _hubConnection.DisposeAsync();
+            _hubConnection = null;
+        }
+        await SessionStorage.RemoveNicknameAsync();
+        await SessionStorage.RemoveUserIdAsync();
+    }
+}

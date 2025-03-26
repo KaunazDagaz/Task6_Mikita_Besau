@@ -2,7 +2,7 @@
 {
     public interface IPresentationHub
     {
-        Task JoinPresentation(Guid presentationId, string nickname);
+        Task JoinPresentation(Guid presentationId, string nickname, Guid userId);
         Task LeavePresentation(Guid presentationId);
         Task ChangeUserRole(string connectionId, string newRole);
         Task UpdateSlideContent(Guid slideId, string content);
