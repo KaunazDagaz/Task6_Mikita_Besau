@@ -6,7 +6,7 @@ namespace task6.Services.IServices
     {
         Task<List<Presentation>> GetAllPresentationsAsync();
         Task<Presentation> GetPresentationByIdAsync(Guid id);
-        Task<Presentation> CreatePresentationAsync(string title, string creatorNickname);
+        Task<Presentation> CreatePresentationAsync(string title, string creatorNickname, Guid creatorId);
         Task<bool> DeletePresentationAsync(Guid id);
     }
 }

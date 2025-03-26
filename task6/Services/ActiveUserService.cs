@@ -9,17 +9,18 @@ namespace task6.Services
     {
         private readonly ConcurrentDictionary<string, ActiveUser> users = new ConcurrentDictionary<string, ActiveUser>();
 
-        public ActiveUser AddUser(string connectionId, string nickname, Guid presentationId, string creatorNickname)
+        public ActiveUser AddUser(string connectionId, string nickname, Guid userId, Guid presentationId, string role)
         {
-            var role = nickname == creatorNickname ? "Creator" : "Viewer";
             var user = new ActiveUser
             {
+                Id = userId,
                 ConnectionId = connectionId,
                 Nickname = nickname,
                 Role = role,
                 PresentationId = presentationId,
-                JoinedAt = DateTime.Now
+                JoinedAt = DateTime.UtcNow
             };
+
             bool isAdded = users.TryAdd(connectionId, user);
             if (!isAdded) throw new UserAlreadyExistsException("User already exists");
             return user;

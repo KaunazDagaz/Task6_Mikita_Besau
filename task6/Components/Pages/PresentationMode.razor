@@ -1,0 +1,171 @@
+﻿@page "/present/{PresentationId:guid}"
+@using Microsoft.AspNetCore.SignalR.Client
+@using task6.Models
+@using task6.Services.IServices
+@inject IPresentationService PresentationService
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JSRuntime
+@inject ISessionStorageService SessionStorage
+@implements IAsyncDisposable
+
+<div class="presentation-mode @(IsFullscreen ? "fullscreen" : "")">
+    <div class="presentation-controls">
+        <button class="btn btn-sm btn-outline-light" @onclick="PreviousSlide" disabled="@(!CanNavigatePrevious)">
+            <i class="fas fa-chevron-left"></i>
+        </button>
+
+        <div class="slide-counter">
+            @(CurrentSlideIndex + 1) / @(Presentation?.Slides?.Count ?? 0)
+        </div>
+
+        <button class="btn btn-sm btn-outline-light" @onclick="NextSlide" disabled="@(!CanNavigateNext)">
+            <i class="fas fa-chevron-right"></i>
+        </button>
+
+        <button class="btn btn-sm btn-outline-light ms-3" @onclick="ToggleFullscreen">
+            <i class="fas @(IsFullscreen ? "fa-compress" : "fa-expand")"></i>
+        </button>
+
+        <button class="btn btn-sm btn-danger ms-3" @onclick="ExitPresentation">
+            Exit
+        </button>
+    </div>
+
+    <div class="presentation-slide">
+        <canvas id="presentation-canvas"></canvas>
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public Guid PresentationId { get; set; }
+
+    [CascadingParameter]
+    public string UserNickname { get; set; }
+    private Presentation Presentation { get; set; }
+    private int CurrentSlideIndex { get; set; } = 0;
+    private bool IsFullscreen { get; set; } = false;
+    private HubConnection hubConnection;
+
+    private bool CanNavigatePrevious => CurrentSlideIndex > 0;
+    private bool CanNavigateNext => Presentation?.Slides != null && CurrentSlideIndex < Presentation.Slides.Count - 1;
+
+    protected override async Task OnInitializedAsync()
+    {
+        UserNickname = await SessionStorage.GetNicknameAsync();
+        if (string.IsNullOrEmpty(UserNickname))
+        {
+            NavigationManager.NavigateTo("/");
+            return;
+        }
+
+        await LoadPresentation();
+        await SetupSignalRConnection();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await InitializeCanvas();
+            await LoadCurrentSlide();
+        }
+    }
+
+    private async Task LoadPresentation()
+    {
+        Presentation = await PresentationService.GetPresentationByIdAsync(PresentationId);
+        if (Presentation == null)
+        {
+            NavigationManager.NavigateTo("/");
+            return;
+        }
+        Presentation.Slides = Presentation.Slides.OrderBy(s => s.Order).ToList();
+    }
+
+    private async Task SetupSignalRConnection()
+    {
+        hubConnection = new HubConnectionBuilder()
+            .WithUrl(NavigationManager.ToAbsoluteUri("/presentationhub"))
+            .WithAutomaticReconnect()
+            .Build();
+
+        hubConnection.On<Guid, string, string>("SlideContentUpdated", async (slideId, content, editorConnectionId) =>
+        {
+            if (CurrentSlideIndex < Presentation.Slides.Count &&
+                Presentation.Slides[CurrentSlideIndex].Id == slideId)
+            {
+                Presentation.Slides[CurrentSlideIndex].Content = content;
+                await JSRuntime.InvokeVoidAsync("fabricInterop.loadFromJSON", content);
+            }
+        });
+
+        var userId = await SessionStorage.GetUserIdAsync();
+        await hubConnection.SendAsync("JoinPresentation", PresentationId, UserNickname, userId);
+    }
+
+    private async Task InitializeCanvas()
+    {
+        await JSRuntime.InvokeVoidAsync("fabricInterop.initCanvas", "presentation-canvas");
+        await JSRuntime.InvokeVoidAsync("fabricInterop.setupViewOnlyCanvas");
+    }
+
+    private async Task LoadCurrentSlide()
+    {
+        if (Presentation?.Slides != null && Presentation.Slides.Count > CurrentSlideIndex)
+        {
+            var slide = Presentation.Slides[CurrentSlideIndex];
+            await JSRuntime.InvokeVoidAsync("fabricInterop.clearCanvas");
+
+            if (!string.IsNullOrEmpty(slide.Content))
+            {
+                await JSRuntime.InvokeVoidAsync("fabricInterop.loadFromJSON", slide.Content);
+            }
+        }
+    }
+
+    private async Task PreviousSlide()
+    {
+        if (CanNavigatePrevious)
+        {
+            CurrentSlideIndex--;
+            await LoadCurrentSlide();
+        }
+    }
+
+    private async Task NextSlide()
+    {
+        if (CanNavigateNext)
+        {
+            CurrentSlideIndex++;
+            await LoadCurrentSlide();
+        }
+    }
+
+    private async Task ToggleFullscreen()
+    {
+        IsFullscreen = !IsFullscreen;
+        if (IsFullscreen)
+        {
+            await JSRuntime.InvokeVoidAsync("document.documentElement.requestFullscreen");
+        }
+        else
+        {
+            await JSRuntime.InvokeVoidAsync("document.exitFullscreen");
+        }
+    }
+
+    private void ExitPresentation()
+    {
+        NavigationManager.NavigateTo($"/presentation/{PresentationId}");
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (hubConnection is not null)
+        {
+            await hubConnection.SendAsync("LeavePresentation", PresentationId);
+            await hubConnection.DisposeAsync();
+        }
+    }
+}

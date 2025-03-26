@@ -17,9 +17,13 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 
 builder.Services.AddScoped<IPresentationService, PresentationService>();
 builder.Services.AddScoped<ISlideService, SlideService>();
+builder.Services.AddScoped<ISessionStorageService, SessionStorageService>();
 builder.Services.AddSingleton<IActiveUserService, ActiveUserService>();
 
-builder.Services.AddSignalR();
+builder.Services.AddSignalR(options =>
+{
+    options.MaximumReceiveMessageSize = 10 * 1024 * 1024;
+});
 
 var app = builder.Build();
 
@@ -37,6 +41,8 @@ app.UseHttpsRedirection();
 
 app.UseStaticFiles();
 app.UseAntiforgery();
+
+app.UseWebSockets();
 
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
