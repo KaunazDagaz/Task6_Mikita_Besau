@@ -8,5 +8,8 @@
         Task UpdateSlideContent(Guid slideId, string content);
         Task AddNewSlide(Guid presentationId);
         Task DeleteSlide(Guid slideId);
+        Task StartPresentationMode(Guid presentationId);
+        Task EndPresentationMode(Guid presentationId);
+        Task MoveToSlide(Guid presentationId, Guid slideId);
     }
 }
