@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.SignalR;
 using task6.Exceptions;
 using task6.Hubs.IHubs;
+using task6.Services;
 using task6.Services.IServices;
 
 namespace task6.Hubs
@@ -87,6 +88,39 @@ namespace task6.Hubs
             await slideService.DeleteSlideAsync(slideId);
             await Clients.Group(user.PresentationId.ToString())
                 .SendAsync("SlideDeleted", slideId);
+        }
+
+        public async Task StartPresentationMode(Guid presentationId)
+        {
+            var user = activeUserService.GetUser(Context.ConnectionId);
+            if (user == null || user.Role != "Creator")
+            {
+                return;
+            }
+
+            await Clients.Group(presentationId.ToString()).SendAsync("PresentationModeStarted");
+        }
+
+        public async Task EndPresentationMode(Guid presentationId)
+        {
+            var user = activeUserService.GetUser(Context.ConnectionId);
+            if (user == null || user.Role != "Creator")
+            {
+                return;
+            }
+
+            await Clients.Group(presentationId.ToString()).SendAsync("PresentationModeEnded");
+        }
+
+        public async Task MoveToSlide(Guid presentationId, Guid slideId)
+        {
+            var user = activeUserService.GetUser(Context.ConnectionId);
+            if (user == null || user.Role != "Creator")
+            {
+                return;
+            }
+
+            await Clients.Group(presentationId.ToString()).SendAsync("PresentationSlideMoved", slideId);
         }
 
         public override async Task OnDisconnectedAsync(Exception? exception)

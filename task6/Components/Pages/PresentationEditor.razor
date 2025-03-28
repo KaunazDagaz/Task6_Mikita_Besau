@@ -12,7 +12,7 @@
 
 @implements IAsyncDisposable
 
-<div class="container-fluid min-vh-100 bg-light px-4 py-4">
+<div class="container-fluid min-vh-100 bg-light px-4 py-4" @onkeydown="HandleKeyDown" tabindex="0">
     @if (!IsConnected)
     {
         <div class="position-absolute top-50 start-50 translate-middle text-center">
@@ -22,13 +22,43 @@
             <h5 class="mt-4 text-muted fw-normal">Connecting to presentation...</h5>
         </div>
     }
+    else if (IsInPresentationMode)
+    {
+        <div class="position-fixed top-0 start-0 w-100 h-100 bg-dark d-flex flex-column justify-content-center align-items-center"
+             @onkeydown="HandleKeyDown"
+             tabindex="0"
+             @ref="presentationContainer">
+            <div class="bg-white rounded-3 shadow-lg" style="width: 80%; height: 80%;">
+                <canvas id="presentationCanvas" class="w-100 h-100"></canvas>
+            </div>
+
+            <div class="mt-4 d-flex align-items-center">
+                <button class="btn btn-light me-2" @onclick="PreviousSlide" disabled="@(CurrentSlideIndex <= 0)">
+                    <i class="bi bi-chevron-left"></i>
+                </button>
+
+                <span class="px-3 py-2 bg-light rounded-pill text-dark">
+                    @(CurrentSlideIndex + 1) / @Slides.Count
+                </span>
+
+                <button class="btn btn-light ms-2" @onclick="NextSlide" disabled="@(CurrentSlideIndex >= Slides.Count - 1)">
+                    <i class="bi bi-chevron-right"></i>
+                </button>
+            </div>
+        </div>
+    }
     else
     {
         <div class="row mb-3">
-            <div class="col-12 d-flex justify-content-end">
-                <button class="btn btn-outline-danger" @onclick="ExitPresentation">
-                    <i class="bi bi-box-arrow-right me-2"></i>Exit Presentation
-                </button>
+            <div class="col-12 d-flex justify-content-between align-items-center">
+                <div>
+                    @if (CurrentUser?.Role == "Creator")
+                    {
+                        <button class="btn btn-primary" @onclick="StartPresentationMode">
+                            <i class="bi bi-play-fill me-2"></i>Present
+                        </button>
+                    }
+                </div>
             </div>
         </div>
         <div class="row h-100 g-4">
@@ -54,7 +84,12 @@
                                                         <span class="badge bg-primary bg-opacity-75">@slide.Order</span>
                                                     </div>
                                                 </div>
-                                                <p class="mb-0 text-center small">Slide @slide.Order</p>
+                                                @if (CurrentUser?.Role == "Creator" && Slides.Count > 1)
+                                                {
+                                                    <button class="btn btn-sm btn-outline-danger w-100" @onclick="() => DeleteSlide(slide.Id)">
+                                                        <i class="bi bi-trash3-fill me-2"></i> Delete
+                                                    </button>
+                                                }
                                             </div>
                                         </div>
                                     }
@@ -158,11 +193,17 @@
         </div>
     }
 </div>
+<script>
+    window.focusElement = function(element) {
+        if (element) {
+            element.focus();
+        }
+    };
+</script>
 
 @code {
     [Parameter]
     public Guid PresentationId { get; set; }
-
     private HubConnection _hubConnection;
     private bool IsConnected { get; set; } = false;
     private string Nickname { get; set; }
@@ -173,6 +214,11 @@
     private Slide CurrentSlide { get; set; }
     private bool _hasInitializedCanvas = false;
     private bool _hasLeftPresentation = false;
+    private bool IsInPresentationMode { get; set; } = false;
+    private int CurrentSlideIndex => CurrentSlide != null ? Slides.FindIndex(s => s.Id == CurrentSlide.Id) : 0;
+    private bool _hasInitializedPresentationCanvas = false;
+    private ElementReference presentationContainer;
+
 
     protected override async Task OnInitializedAsync()
     {
@@ -189,20 +235,47 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!_hasInitializedCanvas && IsConnected)
+        if (!_hasInitializedCanvas && IsConnected && !IsInPresentationMode)
         {
             _hasInitializedCanvas = true;
             await InitializeCanvasAsync();
+            Console.WriteLine("Main canvas initialized");
+        }
+        if (IsInPresentationMode && !_hasInitializedPresentationCanvas)
+        {
+            _hasInitializedPresentationCanvas = true;
+            await InitializePresentationCanvasAsync();
+            Console.WriteLine("Presentation canvas initialized");
+        }
+    }
+
+    private async Task InitializePresentationCanvasAsync()
+    {
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("fabricInterop.initCanvas", "presentationCanvas");
+            await JSRuntime.InvokeVoidAsync("fabricInterop.setupViewOnlyCanvas", "presentationCanvas");
+
+            if (CurrentSlide != null)
+            {
+                await LoadSlideForCanvas("presentationCanvas", CurrentSlide);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error initializing presentation canvas: {ex.Message}");
         }
     }
 
     private void ResetState()
     {
         _hasInitializedCanvas = false;
+        _hasInitializedPresentationCanvas = false;
         Slides = new List<Slide>();
         CurrentSlide = null;
         IsConnected = false;
         _hasLeftPresentation = false;
+        IsInPresentationMode = false;
     }
 
     private async Task InitializeHubConnectionAsync()
@@ -223,7 +296,90 @@
         _hubConnection.On<Guid, string>("SlideContentUpdated", HandleSlideContentUpdated);
         _hubConnection.On<Slide>("NewSlideAdded", HandleNewSlideAdded);
         _hubConnection.On<Guid>("SlideDeleted", HandleSlideDeleted);
+        _hubConnection.On("PresentationModeStarted", HandlePresentationModeStarted);
+        _hubConnection.On("PresentationModeEnded", HandlePresentationModeEnded);
+        _hubConnection.On<Guid>("PresentationSlideMoved", HandlePresentationSlideMoved);
     }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape" && IsInPresentationMode && CurrentUser?.Role == "Creator")
+        {
+            await EndPresentationMode();
+        }
+        else if (IsInPresentationMode)
+        {
+            if (e.Key == "ArrowRight" || e.Key == "ArrowDown" || e.Key == "PageDown")
+            {
+                await NextSlide();
+            }
+            else if (e.Key == "ArrowLeft" || e.Key == "ArrowUp" || e.Key == "PageUp")
+            {
+                await PreviousSlide();
+            }
+        }
+    }
+
+    private async Task StartPresentationMode()
+    {
+        if (CurrentSlide == null && Slides.Any())
+        {
+            CurrentSlide = Slides.First();
+        }
+
+        await _hubConnection.InvokeAsync("StartPresentationMode", PresentationId);
+    }
+
+    private async Task EndPresentationMode()
+    {
+        await _hubConnection.InvokeAsync("EndPresentationMode", PresentationId);
+    }
+
+    private async Task HandlePresentationModeStarted()
+    {
+        IsInPresentationMode = true;
+        _hasInitializedPresentationCanvas = false;
+        await InvokeAsync(StateHasChanged);
+        await Task.Delay(50);
+        await JSRuntime.InvokeVoidAsync("focusElement", presentationContainer);
+    }
+
+    private async Task HandlePresentationModeEnded()
+    {
+        IsInPresentationMode = false;
+        _hasInitializedPresentationCanvas = false;
+        _hasInitializedCanvas = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task HandlePresentationSlideMoved(Guid slideId)
+    {
+        if (IsInPresentationMode)
+        {
+            CurrentSlide = Slides.FirstOrDefault(s => s.Id == slideId);
+            await LoadSlideForCanvas("presentationCanvas", CurrentSlide);
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task NextSlide()
+    {
+        if (CurrentSlideIndex < Slides.Count - 1)
+        {
+            var nextSlide = Slides[CurrentSlideIndex + 1];
+            await _hubConnection.InvokeAsync("MoveToSlide", PresentationId, nextSlide.Id);
+        }
+    }
+
+    private async Task PreviousSlide()
+    {
+        if (CurrentSlideIndex > 0)
+        {
+            var prevSlide = Slides[CurrentSlideIndex - 1];
+            await _hubConnection.InvokeAsync("MoveToSlide", PresentationId, prevSlide.Id);
+        }
+    }
+
 
     private void HandleUserJoined(ActiveUser user)
     {
@@ -311,7 +467,23 @@
                 CurrentSlide = Slides.FirstOrDefault();
                 await LoadCurrentSlideAsync();
             }
+            for (int i = 0; i < Slides.Count; i++)
+            {
+                Slides[i].Order = i + 1;
+            }
             await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task LoadSlideForCanvas(string canvasId, Slide slide)
+    {
+        if (slide != null && !string.IsNullOrEmpty(slide.Content))
+        {
+            await JSRuntime.InvokeVoidAsync("fabricInterop.loadFromJSONToCanvas", canvasId, slide.Content);
+        }
+        else
+        {
+            await JSRuntime.InvokeVoidAsync("fabricInterop.clearCanvasById", canvasId);
         }
     }
 
@@ -342,27 +514,42 @@
 
     private async Task InitializeCanvasAsync()
     {
-        await JSRuntime.InvokeVoidAsync("fabricInterop.initCanvas", "fabricCanvas");
-        if (IsEditable)
+        try
         {
-            await JSRuntime.InvokeVoidAsync("fabricInterop.setupEditableCanvas", true, DotNetObjectReference.Create(this));
+            await JSRuntime.InvokeVoidAsync("fabricInterop.destroyCanvas", "fabricCanvas");
+            await JSRuntime.InvokeVoidAsync("fabricInterop.initCanvas", "fabricCanvas");
+            if (IsEditable)
+            {
+                await JSRuntime.InvokeVoidAsync("fabricInterop.setupEditableCanvas", true, DotNetObjectReference.Create(this));
+            }
+            else
+            {
+                await JSRuntime.InvokeVoidAsync("fabricInterop.setupViewOnlyCanvas", "fabricCanvas");
+            }
+            await LoadCurrentSlideAsync();
         }
-        else
+        catch (Exception ex)
         {
-            await JSRuntime.InvokeVoidAsync("fabricInterop.setupViewOnlyCanvas");
+            Console.WriteLine($"Error initializing canvas: {ex.Message}");
         }
-        await LoadCurrentSlideAsync();
     }
 
     private async Task LoadCurrentSlideAsync()
     {
-        if (CurrentSlide != null && !string.IsNullOrEmpty(CurrentSlide.Content))
+        if (IsInPresentationMode)
         {
-            await JSRuntime.InvokeVoidAsync("fabricInterop.loadFromJSON", CurrentSlide.Content);
+            await LoadSlideForCanvas("presentationCanvas", CurrentSlide);
         }
         else
         {
-            await JSRuntime.InvokeVoidAsync("fabricInterop.clearCanvas");
+            if (CurrentSlide != null && !string.IsNullOrEmpty(CurrentSlide.Content))
+            {
+                await JSRuntime.InvokeVoidAsync("fabricInterop.loadFromJSON", CurrentSlide.Content);
+            }
+            else
+            {
+                await JSRuntime.InvokeVoidAsync("fabricInterop.clearCanvas");
+            }
         }
     }
 
@@ -386,6 +573,15 @@
             await _hubConnection.InvokeAsync("UpdateSlideContent", CurrentSlide.Id, content);
             await SlideService.UpdateSlideContentAsync(CurrentSlide.Id, content);
         }
+    }
+
+    private async Task DeleteSlide(Guid slideId)
+    {
+        if (Slides.Count <= 1)
+            return;
+        if (CurrentUser?.Role != "Creator")
+            return;
+        await _hubConnection.InvokeAsync("DeleteSlide", slideId);
     }
 
     private async Task ChangeUserRole(string connectionId, string newRole)

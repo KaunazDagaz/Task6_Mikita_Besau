@@ -1,29 +1,49 @@
 ﻿window.fabricInterop = {
     canvas: null,
+    presentationCanvas: null,
     isEditable: false,
     dotNetHelper: null,
     debounceTimer: null,
     isPopulating: false,
 
     initCanvas: function (canvasId) {
-        if (this.canvas) {
-            this.canvas.dispose();
-            this.canvas = null;
+        const canvasElement = document.getElementById(canvasId);
+        if (!canvasElement) {
+            console.error(`Canvas element with ID ${canvasId} not found`);
+            return false;
         }
-
-        this.canvas = new fabric.Canvas(canvasId, {
-            width: document.getElementById('canvas-wrapper').clientWidth,
-            height: document.getElementById('canvas-wrapper').clientHeight,
+        if (canvasId === 'fabricCanvas') {
+            this.canvas = null;
+        } else if (canvasId === 'presentationCanvas') {
+            this.presentationCanvas = null;
+        }
+        const container = canvasElement.parentElement;
+        if (!container) {
+            console.error('Canvas parent element not found');
+            return false;
+        }
+        const fabricCanvas = new fabric.Canvas(canvasId, {
+            width: container.clientWidth,
+            height: container.clientHeight,
             backgroundColor: '#ffffff'
         });
-
+        if (canvasId === 'fabricCanvas') {
+            this.canvas = fabricCanvas;
+        } else if (canvasId === 'presentationCanvas') {
+            this.presentationCanvas = fabricCanvas;
+        }
         window.addEventListener('resize', () => {
-            if (this.canvas) {
-                this.canvas.setWidth(document.getElementById('canvas-wrapper').clientWidth);
-                this.canvas.setHeight(document.getElementById('canvas-wrapper').clientHeight);
-                this.canvas.renderAll();
+            if (container && (
+                (canvasId === 'fabricCanvas' && this.canvas) ||
+                (canvasId === 'presentationCanvas' && this.presentationCanvas)
+            )) {
+                const targetCanvas = canvasId === 'fabricCanvas' ? this.canvas : this.presentationCanvas;
+                targetCanvas.setWidth(container.clientWidth);
+                targetCanvas.setHeight(container.clientHeight);
+                targetCanvas.renderAll();
             }
         });
+
         return true;
     },
 
@@ -36,20 +56,28 @@
             this.canvas.on('object:modified', this.contentChanged.bind(this));
             this.canvas.on('object:added', this.contentChanged.bind(this));
             this.canvas.on('object:removed', this.contentChanged.bind(this));
+            this.canvas.on('text:changed', this.contentChanged.bind(this));
         }
         return true;
     },
 
-    setupViewOnlyCanvas: function () {
+    setupViewOnlyCanvas: function (canvasId) {
+        const targetCanvas = canvasId === 'presentationCanvas' ? this.presentationCanvas : this.canvas;
+
+        if (!targetCanvas) return false;
+
         this.isEditable = false;
-        this.canvas.selection = false;
-        this.canvas.isDrawingMode = false;
-        this.canvas.forEachObject((obj) => {
+        targetCanvas.selection = false;
+        targetCanvas.isDrawingMode = false;
+
+        targetCanvas.forEachObject((obj) => {
             obj.selectable = false;
             obj.evented = false;
         });
+
         return true;
     },
+
 
     contentChanged: function () {
         if (this.isPopulating) return;
@@ -106,11 +134,66 @@
         }
     },
 
+    loadFromJSONToCanvas: function (canvasId, json) {
+        const targetCanvas = canvasId === 'presentationCanvas' ? this.presentationCanvas : this.canvas;
+        if (!targetCanvas) {
+            console.error(`Canvas with ID ${canvasId} not initialized`);
+            return false;
+        }
+        try {
+            if (!json || json === '{}' || json === '') {
+                targetCanvas.clear();
+                targetCanvas.backgroundColor = '#ffffff';
+                targetCanvas.renderAll();
+                return true;
+            }
+            const jsonObj = typeof json === 'string' ? JSON.parse(json) : json;
+            targetCanvas.loadFromJSON(jsonObj, () => {
+                targetCanvas.renderAll();
+                targetCanvas.forEachObject((obj) => {
+                    obj.selectable = false;
+                    obj.evented = false;
+                });
+            });
+            return true;
+        } catch (error) {
+            console.error('Error loading canvas:', error);
+            console.error('JSON that caused error:', json);
+            targetCanvas.clear();
+            targetCanvas.backgroundColor = '#ffffff';
+            targetCanvas.renderAll();
+            return false;
+        }
+    },
+
+    clearCanvasById: function (canvasId) {
+        const targetCanvas = canvasId === 'presentationCanvas' ? this.presentationCanvas : this.canvas;
+        if (!targetCanvas) {
+            console.error(`Canvas with ID ${canvasId} not initialized`);
+            return false;
+        }
+        targetCanvas.clear();
+        targetCanvas.backgroundColor = '#ffffff';
+        targetCanvas.renderAll();
+        return true;
+    },
+
     clearCanvas: function () {
         if (!this.canvas) return false;
         this.canvas.clear();
         this.canvas.backgroundColor = '#ffffff';
         this.canvas.renderAll();
+        return true;
+    },
+
+    destroyCanvas: function (canvasId) {
+        if (canvasId === 'fabricCanvas' && this.canvas) {
+            this.canvas.dispose();
+            this.canvas = null;
+        } else if (canvasId === 'presentationCanvas' && this.presentationCanvas) {
+            this.presentationCanvas.dispose();
+            this.presentationCanvas = null;
+        }
         return true;
     },
 
